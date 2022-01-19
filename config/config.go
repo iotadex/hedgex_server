@@ -28,6 +28,8 @@ type hedgex struct {
 type chainNode struct {
 	Https string `json:"http"`
 	Wss   string `json:"ws"`
+	From  int64  `json:"from"`
+	To    int64  `json:"to"`
 }
 
 type explosive struct {
@@ -40,13 +42,6 @@ type interest struct {
 	Begin     int64         `json:"begin"`
 	End       int64         `json:"end"`
 	ToAddress string        `json:"to_address"`
-}
-
-type testcoin struct {
-	Count       int    `json:"count"`
-	CoinAmount  string `json:"coin_amount"`
-	Token       string `json:"token"`
-	TokenAmount string `json:"token_amount"`
 }
 
 var (

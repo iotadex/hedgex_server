@@ -54,6 +54,8 @@ func InitContract() {
 	if err != nil {
 		log.Panic("ChainNode : ", config.ChainNode.Https, err)
 	}
+	block, _ := EthHttpsClient.BlockByNumber(context.Background(), big.NewInt(100000))
+	block.Time()
 
 	Contracts = make(map[string]*hedgex.Hedgex)
 	for i := range config.Contract {

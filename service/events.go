@@ -55,14 +55,27 @@ StartFilter:
 }
 
 func getHistoryEventLogs(contractAddress string) {
+	var err error
+	fromBlock := config.ChainNode.From
+	if fromBlock < 0 {
+		fromBlock, err = model.GetLastBlock(contractAddress)
+		if err != nil {
+			log.Panic("Get the last block from database error. ", err)
+		}
+	}
 	//Get the last block number from database
-	lastBlock, err := model.GetLastBlock(contractAddress)
-	if err != nil {
-		log.Panic("Get the last block from database error. ", err)
+	toBlock := config.ChainNode.To
+	if toBlock <= 0 {
+		if currBlock, err := gl.GetCurrentBlockNumber(); err != nil {
+			log.Println("GetCurrentBlockNumber error. ", err)
+		} else {
+			toBlock = int64(currBlock) - 995
+		}
 	}
 
 	query := ethereum.FilterQuery{
-		FromBlock: big.NewInt(lastBlock),
+		FromBlock: big.NewInt(fromBlock),
+		ToBlock:   big.NewInt(toBlock),
 		Addresses: []common.Address{common.HexToAddress(contractAddress)},
 	}
 
