@@ -49,6 +49,10 @@ var (
 )
 
 func InitContract() {
+	key := tools.InputKey()
+	pk := tools.AesCBCDecrypt(config.PrivateKey, key)
+	SetPrivateKey(pk)
+
 	var err error
 	EthHttpsClient, err = ethclient.Dial(config.ChainNode.Https)
 	if err != nil {
@@ -59,7 +63,7 @@ func InitContract() {
 
 	Contracts = make(map[string]*hedgex.Hedgex)
 	for i := range config.Contract {
-		Contracts[config.Contract[i].Address], err = hedgex.NewHedgex(common.HexToAddress(config.Contract[i].Address), EthHttpsClient)
+		Contracts[config.Contract[i]], err = hedgex.NewHedgex(common.HexToAddress(config.Contract[i]), EthHttpsClient)
 		if err != nil {
 			log.Panic(err)
 		}
@@ -100,10 +104,6 @@ func InitContract() {
 	if err != nil {
 		log.Panic(err)
 	}
-
-	key := tools.InputKey()
-	pk := tools.AesCBCDecrypt(config.PrivateKey, key)
-	SetPrivateKey(pk)
 }
 
 func SetPrivateKey(pk string) {
@@ -125,16 +125,18 @@ func GetAccountAuth() (*bind.TransactOpts, error) {
 	if err != nil {
 		return nil, err
 	}
-	chainID, err := EthHttpsClient.NetworkID(context.Background())
+	if gasPrice.Int64() < config.ChainNode.GasPriceMin {
+		gasPrice = big.NewInt(config.ChainNode.GasPriceMin)
+	} else {
+		upPrice := int64(float64(gasPrice.Int64()) * (config.ChainNode.GasPriceUp + 1))
+		gasPrice = big.NewInt(upPrice)
+	}
+	auth, err := bind.NewKeyedTransactorWithChainID(privateKey, chainID)
 	if err != nil {
 		return nil, err
 	}
-	auth, err := bind.NewKeyedTransactorWithChainID(privateKey, chainID) // bind.NewKeyedTransactor(privateKey)
-	if err != nil {
-		return nil, err
-	}
-	auth.Value = big.NewInt(0)     // in wei
-	auth.GasLimit = uint64(300000) // in units
+	auth.Value = big.NewInt(0)
+	auth.GasLimit = uint64(300000)
 	auth.GasPrice = gasPrice
 	return auth, nil
 }

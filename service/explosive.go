@@ -14,71 +14,63 @@ var expUserList map[string]*ExplosiveList //current accounts waiting for be dete
 func init() {
 	expUserList = make(map[string]*ExplosiveList)
 	for i := range config.Contract {
-		expUserList[config.Contract[i].Address] = NewExplosiveList()
+		expUserList[config.Contract[i]] = NewExplosiveList()
 	}
 }
 
 //StartExplosiveDetectServer, no blocking function
 func StartExplosiveDetectServer() {
-	ServiceWaitGroup.Add(1)
-	defer ServiceWaitGroup.Done()
 	timer := time.NewTicker(config.Explosive.Tick * time.Second)
-	for {
-		select {
-		case <-timer.C:
-			for _, contract := range config.Contract {
-				//get the current price of contract
-				price := atomic.LoadInt64(IndexPrices[contract.Address])
-				if price == 0 {
-					gl.OutLogger.Warn("Get index price error. %s", contract.Address)
-					continue
-				}
+	for range timer.C {
+		for _, contract := range config.Contract {
+			//get the current price of contract
+			price := atomic.LoadInt64(IndexPrices[contract])
+			if price == 0 {
+				gl.OutLogger.Warn("Get index price error. %s", contract)
+				continue
+			}
 
-				//check long position users
-				for {
-					expUserList[contract.Address].mu.Lock()
-					node := expUserList[contract.Address].LHead.Next
-					expUserList[contract.Address].mu.Unlock()
-					if (node == nil) || (node.ExPrice < price) {
-						break
-					}
-					auth, err := gl.GetAccountAuth()
-					if err != nil {
-						gl.OutLogger.Error("Get auth error  when explosive user. %v", err)
-						break
-					}
-					if err := gl.Explosive(auth, contract.Address, node.Account); err != nil {
-						gl.OutLogger.Error("Explosive error. %s : %s : %v", contract.Address, node.Account, err)
-						break
-					} else {
-						expUserList[contract.Address].Delete(node.Account)
-					}
+			//check long position users
+			for {
+				expUserList[contract].mu.Lock()
+				node := expUserList[contract].LHead.Next
+				expUserList[contract].mu.Unlock()
+				if (node == nil) || (node.ExPrice < price) {
+					break
 				}
-
-				//check short position users
-				for {
-					expUserList[contract.Address].mu.Lock()
-					node := expUserList[contract.Address].SHead.Next
-					expUserList[contract.Address].mu.Unlock()
-					if (node == nil) || (node.ExPrice > price) {
-						break
-					}
-					auth, err := gl.GetAccountAuth()
-					if err != nil {
-						gl.OutLogger.Error("Get auth error  when explosive user. %v", err)
-						break
-					}
-					if err := gl.Explosive(auth, contract.Address, node.Account); err != nil {
-						gl.OutLogger.Error("Explosive error. %s : %s : %v", contract.Address, node.Account, err)
-						break
-					} else {
-						expUserList[contract.Address].Delete(node.Account)
-					}
+				auth, err := gl.GetAccountAuth()
+				if err != nil {
+					gl.OutLogger.Error("Get auth error  when explosive user. %v", err)
+					break
+				}
+				if err := gl.Explosive(auth, contract, node.Account); err != nil {
+					gl.OutLogger.Error("Explosive error. %s : %s : %v", contract, node.Account, err)
+					break
+				} else {
+					expUserList[contract].Delete(node.Account)
 				}
 			}
-		case <-QuitExplosiveDetect:
-			timer.Stop()
-			return
+
+			//check short position users
+			for {
+				expUserList[contract].mu.Lock()
+				node := expUserList[contract].SHead.Next
+				expUserList[contract].mu.Unlock()
+				if (node == nil) || (node.ExPrice > price) {
+					break
+				}
+				auth, err := gl.GetAccountAuth()
+				if err != nil {
+					gl.OutLogger.Error("Get auth error  when explosive user. %v", err)
+					break
+				}
+				if err := gl.Explosive(auth, contract, node.Account); err != nil {
+					gl.OutLogger.Error("Explosive error. %s : %s : %v", contract, node.Account, err)
+					break
+				} else {
+					expUserList[contract].Delete(node.Account)
+				}
+			}
 		}
 	}
 }

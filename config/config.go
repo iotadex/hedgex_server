@@ -19,17 +19,11 @@ type db struct {
 	Pwd       string        `json:"pwd"`
 }
 
-type hedgex struct {
-	Address    string `json:"address"`
-	MarginCoin string `json:"margin_coin"`
-	TradeCoin  string `json:"trade_coin"`
-}
-
 type chainNode struct {
-	Https string `json:"http"`
-	Wss   string `json:"ws"`
-	From  int64  `json:"from"`
-	To    int64  `json:"to"`
+	Https       string  `json:"http"`
+	Wss         string  `json:"ws"`
+	GasPriceUp  float64 `json:"gas_price_up"`
+	GasPriceMin int64   `json:"gas_price_min"`
 }
 
 type explosive struct {
@@ -51,7 +45,7 @@ var (
 	Interest   interest
 	IndexTick  time.Duration
 	ChainNode  chainNode
-	Contract   []hedgex
+	Contract   []string
 	PrivateKey string
 )
 
@@ -63,15 +57,14 @@ func init() {
 	}
 	defer file.Close()
 	type Config struct {
-		Env         string        `json:"env"`
-		Explosive   explosive     `json:"explosive"`
-		Interest    interest      `json:"interest"`
-		ExplosiveTo string        `json:"explosive_to_address"`
-		IndexTick   time.Duration `json:"index_tick"`
-		Db          db            `json:"db"`
-		ChainNode   chainNode     `json:"chain_node"`
-		Contract    []hedgex      `json:"contract"`
-		PrivateKey  string        `json:"wallet"`
+		Env        string        `json:"env"`
+		Explosive  explosive     `json:"explosive"`
+		Interest   interest      `json:"interest"`
+		IndexTick  time.Duration `json:"index_tick"`
+		Db         db            `json:"db"`
+		ChainNode  chainNode     `json:"chain_node"`
+		Contract   []string      `json:"contract"`
+		PrivateKey string        `json:"wallet"`
 	}
 	all := &Config{}
 	if err = json.NewDecoder(file).Decode(all); err != nil {

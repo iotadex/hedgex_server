@@ -17,10 +17,6 @@ import (
 
 //StartFilterEvents start to filter the contract's events
 func StartFilterEvents(contractAddress string) {
-	ServiceWaitGroup.Add(1)
-	defer ServiceWaitGroup.Done()
-	QuitEvent[contractAddress] = make(chan int)
-
 	getHistoryEventLogs(contractAddress)
 
 	query := ethereum.FilterQuery{
@@ -34,10 +30,6 @@ StartFilter:
 	}
 	for {
 		select {
-		case <-QuitEvent[contractAddress]:
-			gl.EthWssClient.Close()
-			gl.OutLogger.Info("Events Filter(%s) Service Stoped!", contractAddress)
-			return
 		case err := <-sub.Err():
 			gl.OutLogger.Error("Evnet wss sub error. %v", err)
 			gl.OutLogger.Warn("The EthWssClient will be redialed...")
@@ -55,27 +47,13 @@ StartFilter:
 }
 
 func getHistoryEventLogs(contractAddress string) {
-	var err error
-	fromBlock := config.ChainNode.From
-	if fromBlock < 0 {
-		fromBlock, err = model.GetLastBlock(contractAddress)
-		if err != nil {
-			log.Panic("Get the last block from database error. ", err)
-		}
-	}
-	//Get the last block number from database
-	toBlock := config.ChainNode.To
-	if toBlock <= 0 {
-		if currBlock, err := gl.GetCurrentBlockNumber(); err != nil {
-			log.Println("GetCurrentBlockNumber error. ", err)
-		} else {
-			toBlock = int64(currBlock) - 995
-		}
+	currBlock, err := gl.GetCurrentBlockNumber()
+	if err != nil {
+		log.Println("GetCurrentBlockNumber error. ", err)
 	}
 
 	query := ethereum.FilterQuery{
-		FromBlock: big.NewInt(fromBlock),
-		ToBlock:   big.NewInt(toBlock),
+		FromBlock: big.NewInt(int64(currBlock) - 990),
 		Addresses: []common.Address{common.HexToAddress(contractAddress)},
 	}
 
@@ -101,7 +79,7 @@ func dealEventLog(contract string, vLog *types.Log) {
 			if len(vLog.Data) > 0 {
 				data, err = gl.ContractAbi.Unpack(event, vLog.Data)
 				if err != nil {
-					gl.OutLogger.Error("Unpack the event log error. tx(%s) : %s : %s : %s", tx, event, gl.EventNames[topic0], err.Error())
+					gl.OutLogger.Error("Unpack the event log error. tx(%s) : %s : %s : %v", tx, event, gl.EventNames[topic0], err)
 					return
 				}
 			}
@@ -146,7 +124,7 @@ func dealEventLog(contract string, vLog *types.Log) {
 			gl.OutLogger.Info("Topics : %v   ;   data  :  %v", vLog.Topics, vLog.Data)
 		}
 		if err != nil {
-			gl.OutLogger.Error("insert into database error. %s : %s", gl.EventNames[vLog.Topics[0].Hex()], err.Error())
+			gl.OutLogger.Error("insert into database error. %s : %v", gl.EventNames[vLog.Topics[0].Hex()], err)
 		}
 	}
 }
@@ -172,7 +150,7 @@ func updateUser(contract string, account string, block uint64) {
 		Block:     block,
 	}
 	if err := model.UpdateUser(contract, &user); err != nil {
-		gl.OutLogger.Error("Update account's data in database error. %s", err.Error())
+		gl.OutLogger.Error("Update account's data in database error. %v", err)
 	}
 
 	//update the explosive list

@@ -27,7 +27,4 @@ func main() {
 
 	//wait to exit single
 	daemon.WaitForKill()
-
-	//stop the contract service
-	service.Stop()
 }

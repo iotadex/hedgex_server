@@ -8,12 +8,12 @@ import (
 	"time"
 )
 
-var interestUserList map[string]*TakeInterestList //current accounts waiting for be detected to explosive
+var interestUserList map[string]*TakeInterestList
 
 func init() {
 	interestUserList = make(map[string]*TakeInterestList)
 	for _, contract := range config.Contract {
-		interestUserList[contract.Address] = &TakeInterestList{
+		interestUserList[contract] = &TakeInterestList{
 			luser: make(map[string]*interestUser),
 			suser: make(map[string]*interestUser),
 		}
@@ -42,15 +42,15 @@ func StartTakeInterestServer() {
 			continue
 		}
 
-		ServiceWaitGroup.Add(1)
 		for _, contract := range config.Contract {
 			//get the pool's position
-			_, lp, _, sp, _, _, err := gl.GetPoolPosition(contract.Address)
+			_, lp, _, sp, _, _, err := gl.GetPoolPosition(contract)
 			if err != nil {
-				gl.OutLogger.Error("Get account's position data from blockchain error. %s : %v", contract.Address, err)
+				gl.OutLogger.Error("Get account's position data from blockchain error. %s : %v", contract, err)
+				time.Sleep(time.Second)
 				continue
 			}
-			til := interestUserList[contract.Address]
+			til := interestUserList[contract]
 			var l map[string]*interestUser
 			if lp > sp {
 				l = til.getShortUsers()
@@ -60,14 +60,13 @@ func StartTakeInterestServer() {
 
 			for k, v := range l {
 				if v.day < uint(dayCount) {
-					if gl.DetectSlide(auth, contract.Address, k) == nil {
+					if gl.DetectSlide(auth, contract, k) == nil {
 						gl.OutLogger.Info("send interest over. %s", k)
 						til.flag(k, uint(dayCount))
 					}
 				}
 			}
 		}
-		ServiceWaitGroup.Done()
 	}
 }
 
