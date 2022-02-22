@@ -1,9 +1,14 @@
 package service
 
 import (
+	"container/list"
 	"hedgex-server/config"
 	"hedgex-server/model"
 	"log"
+	"sync"
+
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
+	"github.com/ethereum/go-ethereum/core/types"
 )
 
 func Start() {
@@ -11,9 +16,7 @@ func Start() {
 	go StartIndexPriceService()
 
 	//start listening the event of contracts
-	for _, contract := range config.Contract {
-		go StartFilterEvents(contract)
-	}
+	go StartFilterEvents()
 
 	//get users from database
 	getHistoryUsersDataFromDb()
@@ -37,4 +40,18 @@ func getHistoryUsersDataFromDb() {
 			interestUserList[contract].update(&users[i])
 		}
 	}
+}
+
+type txNode struct {
+	tx   *types.Transaction
+	auth *bind.TransactOpts
+}
+
+type TxList struct {
+	txList list.List
+	mu     sync.Mutex
+}
+
+func StartDetectTransactions() {
+
 }

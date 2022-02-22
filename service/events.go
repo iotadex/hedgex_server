@@ -16,22 +16,26 @@ import (
 )
 
 //StartFilterEvents start to filter the contract's events
-func StartFilterEvents(contractAddress string) {
-	getHistoryEventLogs(contractAddress)
+func StartFilterEvents() {
+	addresses := make([]common.Address, 0, len(config.Contract))
+	for _, con := range config.Contract {
+		addresses = append(addresses, common.HexToAddress(con))
+	}
+	getHistoryEventLogs(addresses)
 
 	query := ethereum.FilterQuery{
-		Addresses: []common.Address{common.HexToAddress(contractAddress)},
+		Addresses: addresses,
 	}
 StartFilter:
 	eventLogChan := make(chan types.Log)
 	sub, err := gl.EthWssClient.SubscribeFilterLogs(context.Background(), query, eventLogChan)
 	if err != nil {
-		log.Panic("Get event logs from eth wss client error. ", contractAddress, err)
+		log.Panic("Get event logs from eth wss client error. ", err)
 	}
 	for {
 		select {
 		case err := <-sub.Err():
-			gl.OutLogger.Error("Evnet wss sub error. %v", err)
+			gl.OutLogger.Error("Event wss sub error. %v", err)
 			gl.OutLogger.Warn("The EthWssClient will be redialed...")
 			time.Sleep(time.Second * 10)
 			gl.EthWssClient, err = ethclient.Dial(config.ChainNode.Wss)
@@ -41,41 +45,52 @@ StartFilter:
 			}
 			goto StartFilter
 		case vLog := <-eventLogChan:
-			dealEventLog(contractAddress, &vLog)
+			dealEventLog(&vLog)
 		}
 	}
 }
 
-func getHistoryEventLogs(contractAddress string) {
+func getHistoryEventLogs(addresses []common.Address) {
 	currBlock, err := gl.GetCurrentBlockNumber()
 	if err != nil {
 		log.Println("GetCurrentBlockNumber error. ", err)
+		return
 	}
 
-	query := ethereum.FilterQuery{
-		FromBlock: big.NewInt(int64(currBlock) - 990),
-		Addresses: []common.Address{common.HexToAddress(contractAddress)},
+	fromBlock := config.ChainNode.From
+	if fromBlock < 24892730 {
+		fromBlock = int64(currBlock) - config.ChainNode.BlockCountLimit + 10
 	}
 
-	logs, err := gl.EthHttpsClient.FilterLogs(context.Background(), query)
-	if err != nil {
-		log.Println("Get event logs from eth client error. ", err)
-	}
+	for fromBlock < int64(currBlock) {
+		toBlcok := fromBlock + config.ChainNode.BlockCountLimit
+		query := ethereum.FilterQuery{
+			FromBlock: big.NewInt(fromBlock),
+			ToBlock:   big.NewInt(toBlcok),
+			Addresses: addresses,
+		}
+		logs, err := gl.EthHttpsClient.FilterLogs(context.Background(), query)
+		if err != nil {
+			log.Println("Get event logs from eth client error. ", err)
+			continue
+		}
+		gl.OutLogger.Info("There are %d event logs from %d to %d", len(logs), fromBlock, toBlcok)
 
-	for _, log := range logs {
-		dealEventLog(contractAddress, &log)
+		for _, log := range logs {
+			dealEventLog(&log)
+		}
+		fromBlock += config.ChainNode.BlockCountLimit
 	}
 }
 
-func dealEventLog(contract string, vLog *types.Log) {
+func dealEventLog(vLog *types.Log) {
 	if len(vLog.Topics) > 0 {
 		tx := vLog.TxHash.Hex()
 		block := vLog.BlockNumber
 		var err error
 		var data []interface{}
 		topic0 := vLog.Topics[0].Hex()
-		event, exist := gl.EventNames[topic0]
-		if exist {
+		if event, exist := gl.EventNames[topic0]; exist {
 			if len(vLog.Data) > 0 {
 				data, err = gl.ContractAbi.Unpack(event, vLog.Data)
 				if err != nil {
@@ -88,36 +103,36 @@ func dealEventLog(contract string, vLog *types.Log) {
 		switch topic0 {
 		case gl.MintEvent:
 			amount := data[0].(*big.Int).Uint64()
-			err = model.InsertMint(tx, contract, account, amount, block)
+			err = model.InsertMint(tx, vLog.Address.Hex(), account, amount, block)
 		case gl.BurnEvent:
 			amount := data[0].(*big.Int).Uint64()
-			err = model.InsertBurn(tx, contract, account, amount, block)
+			err = model.InsertBurn(tx, vLog.Address.Hex(), account, amount, block)
 		case gl.RechargeEvent:
 			amount := data[0].(*big.Int).Uint64()
-			err = model.InsertRecharge(tx, contract, account, amount, block)
-			updateUser(contract, account, block)
+			err = model.InsertRecharge(tx, vLog.Address.Hex(), account, amount, block)
+			updateUser(vLog.Address.Hex(), account, block)
 		case gl.WithdrawEvent:
 			amount := data[0].(*big.Int).Uint64()
-			err = model.InsertWithdraw(tx, contract, account, amount, block)
-			updateUser(contract, account, block)
+			err = model.InsertWithdraw(tx, vLog.Address.Hex(), account, amount, block)
+			updateUser(vLog.Address.Hex(), account, block)
 		case gl.TradeEvent:
 			direction := data[0].(int8)
 			amount := data[1].(*big.Int).Uint64()
 			price := data[2].(*big.Int).Uint64()
-			err = model.InsertTrade(tx, contract, account, direction, amount, price, block)
-			updateUser(contract, account, block)
+			err = model.InsertTrade(tx, vLog.Address.Hex(), account, direction, amount, price, block)
+			updateUser(vLog.Address.Hex(), account, block)
 		case gl.ExplosiveEvent:
 			direction := data[0].(int8)
 			amount := data[1].(*big.Int).Uint64()
 			price := data[2].(*big.Int).Uint64()
-			err = model.InsertExplosive(tx, contract, account, direction, amount, price, block)
-			updateUser(contract, account, block)
+			err = model.InsertExplosive(tx, vLog.Address.Hex(), account, direction, amount, price, block)
+			updateUser(vLog.Address.Hex(), account, block)
 		case gl.TakeInterestEvent:
 			direction := data[0].(int8)
 			amount := data[1].(*big.Int).Uint64()
 			price := data[2].(*big.Int).Uint64()
-			err = model.InsertInterest(tx, contract, account, direction, amount, price, block)
-			updateUser(contract, account, block)
+			err = model.InsertInterest(tx, vLog.Address.Hex(), account, direction, amount, price, block)
+			updateUser(vLog.Address.Hex(), account, block)
 		case gl.TransferEvent:
 			gl.OutLogger.Info("Transfer from %s to %s : %v", account, vLog.Topics[2].Hex(), data[0])
 		default:

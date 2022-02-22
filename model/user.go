@@ -128,10 +128,27 @@ func GetUsers(contract string) ([]User, uint64, error) {
 	return data, maxBlock, nil
 }
 
-//UpdateUser update user's data
+//UpdateUser update user's data with transaction
 func UpdateUser(contract string, u *User) error {
-	_, err := db.Exec("replace into user(account,contract,margin,lposition,lprice,sposition,sprice,interest_day,block) values(?,?,?,?,?,?,?,?,?) ",
-		u.Account, contract, u.Margin, u.Lposition, u.Lprice, u.Sposition, u.Sprice, u.InterestDay, u.Block)
+	tx, err := db.Begin()
+	if err != nil {
+		if tx != nil {
+			tx.Rollback()
+		}
+		return err
+	}
+	row := tx.QueryRow("select block from user where account=? and contract=? and block>?", u.Account, contract, u.Block)
+	var maxBlock uint64
+	if err = row.Scan(&maxBlock); err == sql.ErrNoRows {
+		_, err := tx.Exec("replace into user(account,contract,margin,lposition,lprice,sposition,sprice,interest_day,block) values(?,?,?,?,?,?,?,?,?) ",
+			u.Account, contract, u.Margin, u.Lposition, u.Lprice, u.Sposition, u.Sprice, u.InterestDay, u.Block)
+		if err != nil {
+			tx.Rollback()
+			return err
+		}
+		return tx.Commit()
+	}
+	tx.Rollback()
 	return err
 }
 

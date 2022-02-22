@@ -20,15 +20,18 @@ type db struct {
 }
 
 type chainNode struct {
-	Https       string  `json:"http"`
-	Wss         string  `json:"ws"`
-	GasPriceUp  float64 `json:"gas_price_up"`
-	GasPriceMin int64   `json:"gas_price_min"`
+	Https           string  `json:"http"`
+	Wss             string  `json:"ws"`
+	GasPriceUp      float64 `json:"gas_price_up"`
+	GasPriceMin     int64   `json:"gas_price_min"`
+	From            int64   `json:"from"`
+	BlockCountLimit int64   `json:"block_count_limit"`
 }
 
 type explosive struct {
 	Tick      time.Duration `json:"tick"`
 	ToAddress string        `json:"to_address"`
+	Wallet    string        `json:"wallet"`
 }
 
 type interest struct {
@@ -36,6 +39,7 @@ type interest struct {
 	Begin     int64         `json:"begin"`
 	End       int64         `json:"end"`
 	ToAddress string        `json:"to_address"`
+	Wallet    string        `json:"wallet"`
 }
 
 var (

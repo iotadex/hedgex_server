@@ -60,7 +60,7 @@ func StartTakeInterestServer() {
 
 			for k, v := range l {
 				if v.day < uint(dayCount) {
-					if gl.DetectSlide(auth, contract, k) == nil {
+					if _, err := gl.DetectSlide(auth, contract, k); err == nil {
 						gl.OutLogger.Info("send interest over. %s", k)
 						til.flag(k, uint(dayCount))
 					}

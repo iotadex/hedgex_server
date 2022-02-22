@@ -38,7 +38,8 @@ var (
 	EventNames        map[string]string
 
 	//contract's instance
-	Contracts map[string]*hedgex.Hedgex
+	Contracts       map[string]*hedgex.Hedgex
+	KeepMarginScale map[string]uint64
 
 	//
 	privateKey    *ecdsa.PrivateKey
@@ -56,17 +57,27 @@ func InitContract() {
 	var err error
 	EthHttpsClient, err = ethclient.Dial(config.ChainNode.Https)
 	if err != nil {
-		log.Panic("ChainNode : ", config.ChainNode.Https, err)
+		log.Panic("ChainNode Connect Error :", config.ChainNode.Https, err)
 	}
-	block, _ := EthHttpsClient.BlockByNumber(context.Background(), big.NewInt(100000))
-	block.Time()
 
+	chainID, err = EthHttpsClient.NetworkID(context.Background())
+	if err != nil {
+		log.Panic(err)
+	}
+
+	KeepMarginScale = make(map[string]uint64)
 	Contracts = make(map[string]*hedgex.Hedgex)
 	for i := range config.Contract {
-		Contracts[config.Contract[i]], err = hedgex.NewHedgex(common.HexToAddress(config.Contract[i]), EthHttpsClient)
+		cont, err := hedgex.NewHedgex(common.HexToAddress(config.Contract[i]), EthHttpsClient)
 		if err != nil {
 			log.Panic(err)
 		}
+		scale, err := cont.KeepMarginScale(nil)
+		if err != nil {
+			log.Panic(err)
+		}
+		Contracts[config.Contract[i]] = cont
+		KeepMarginScale[config.Contract[i]] = uint64(scale)
 	}
 
 	EthWssClient, err = ethclient.Dial(config.ChainNode.Wss)
@@ -99,11 +110,6 @@ func InitContract() {
 	EventNames[TransferEvent] = "Transfer"
 
 	erc20TransferID = []byte{0xa9, 0x05, 0x9c, 0xbb} //transfer(address,uint256)
-
-	chainID, err = EthHttpsClient.NetworkID(context.Background())
-	if err != nil {
-		log.Panic(err)
-	}
 }
 
 func SetPrivateKey(pk string) {
@@ -213,28 +219,23 @@ func sendTransaction(to common.Address, value *big.Int, data []byte) error {
 	return nil
 }
 
-func Explosive(auth *bind.TransactOpts, contract string, account string) error {
+func Explosive(auth *bind.TransactOpts, contract string, account string) (*types.Transaction, error) {
 	nonce, err := EthHttpsClient.PendingNonceAt(context.Background(), PublicAddress)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	auth.Nonce = big.NewInt(int64(nonce))
-	_, err = Contracts[contract].Explosive(auth, common.HexToAddress(account), common.HexToAddress(config.Explosive.ToAddress))
-	return err
+	return Contracts[contract].Explosive(auth, common.HexToAddress(account), common.HexToAddress(config.Explosive.ToAddress))
 }
 
-func DetectSlide(auth *bind.TransactOpts, add string, account string) error {
+func DetectSlide(auth *bind.TransactOpts, add string, account string) (*types.Transaction, error) {
 	nonce, err := EthHttpsClient.PendingNonceAt(context.Background(), PublicAddress)
 	if err != nil {
 		OutLogger.Error("Take interest : Get nonce error address(%s). %v", PublicAddress, err)
-		return err
+		return nil, err
 	}
 	auth.Nonce = big.NewInt(int64(nonce))
-	if _, err := Contracts[add].DetectSlide(auth, common.HexToAddress(account), common.HexToAddress(config.Interest.ToAddress)); err != nil {
-		OutLogger.Error("Transaction with detect slide error. %v", err)
-		return err
-	}
-	return nil
+	return Contracts[add].DetectSlide(auth, common.HexToAddress(account), common.HexToAddress(config.Interest.ToAddress))
 }
 
 func ExplosivePool(auth *bind.TransactOpts, contract string) error {
@@ -258,7 +259,7 @@ func ForceClose(auth *bind.TransactOpts, contract string, account string) error 
 }
 
 func GetIndexPrice(add string) (int64, error) {
-	price, err := Contracts[add].GetLatestPrice(nil)
+	price, _, err := Contracts[add].GetLatestPrice(nil)
 	if err != nil {
 		return 0, err
 	}
@@ -279,4 +280,7 @@ func GetPoolState(add string) (uint8, error) {
 
 func GetCurrentBlockNumber() (uint64, error) {
 	return EthHttpsClient.BlockNumber(context.Background())
+}
+
+func GetTransactionByHash() {
 }

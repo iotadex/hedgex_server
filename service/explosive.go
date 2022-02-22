@@ -14,7 +14,8 @@ var expUserList map[string]*ExplosiveList //current accounts waiting for be dete
 func init() {
 	expUserList = make(map[string]*ExplosiveList)
 	for i := range config.Contract {
-		expUserList[config.Contract[i]] = NewExplosiveList()
+		scale := gl.KeepMarginScale[config.Contract[i]]
+		expUserList[config.Contract[i]] = NewExplosiveList(scale)
 	}
 }
 
@@ -43,12 +44,11 @@ func StartExplosiveDetectServer() {
 					gl.OutLogger.Error("Get auth error  when explosive user. %v", err)
 					break
 				}
-				if err := gl.Explosive(auth, contract, node.Account); err != nil {
+				if _, err := gl.Explosive(auth, contract, node.Account); err != nil {
 					gl.OutLogger.Error("Explosive error. %s : %s : %v", contract, node.Account, err)
 					break
-				} else {
-					expUserList[contract].Delete(node.Account)
 				}
+				expUserList[contract].Delete(node.Account)
 			}
 
 			//check short position users
@@ -64,12 +64,11 @@ func StartExplosiveDetectServer() {
 					gl.OutLogger.Error("Get auth error  when explosive user. %v", err)
 					break
 				}
-				if err := gl.Explosive(auth, contract, node.Account); err != nil {
+				if _, err := gl.Explosive(auth, contract, node.Account); err != nil {
 					gl.OutLogger.Error("Explosive error. %s : %s : %v", contract, node.Account, err)
 					break
-				} else {
-					expUserList[contract].Delete(node.Account)
 				}
+				expUserList[contract].Delete(node.Account)
 			}
 		}
 	}
@@ -83,17 +82,19 @@ type UserNode struct {
 }
 
 type ExplosiveList struct {
-	LHead *UserNode            // long position user
-	SHead *UserNode            // short position user
-	Index map[string]*UserNode // the user node's index
-	mu    sync.Mutex
+	LHead           *UserNode            // long position user
+	SHead           *UserNode            // short position user
+	Index           map[string]*UserNode // the user node's index
+	KeepMarginScale uint64
+	mu              sync.Mutex
 }
 
-func NewExplosiveList() *ExplosiveList {
+func NewExplosiveList(scale uint64) *ExplosiveList {
 	return &ExplosiveList{
-		LHead: &UserNode{},
-		SHead: &UserNode{},
-		Index: make(map[string]*UserNode),
+		LHead:           &UserNode{},
+		SHead:           &UserNode{},
+		Index:           make(map[string]*UserNode),
+		KeepMarginScale: scale,
 	}
 }
 
@@ -106,7 +107,7 @@ func (el *ExplosiveList) Insert(u *model.User) {
 	if _, exist := el.Index[u.Account]; exist {
 		return
 	}
-	keepMargin := (u.Lposition*u.Lprice + u.Sposition*u.Sprice) / 30
+	keepMargin := (u.Lposition*u.Lprice + u.Sposition*u.Sprice) / el.KeepMarginScale
 	ePrice := (int64(keepMargin) - u.Margin + int64(u.Lposition*u.Lprice) - int64(u.Sposition*u.Sprice)) / (int64(u.Lposition) - int64(u.Sposition))
 	var currNode *UserNode
 	node := &UserNode{
@@ -122,7 +123,6 @@ func (el *ExplosiveList) Insert(u *model.User) {
 			}
 			currNode = currNode.Next
 		}
-
 	} else {
 		currNode = el.SHead
 		for {
