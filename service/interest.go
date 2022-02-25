@@ -21,7 +21,7 @@ func init() {
 }
 
 //StartExplosiveDetectServer, no blocking function
-func StartTakeInterestServer() {
+func StartTakeInterest() {
 	for {
 		ts := time.Now().Unix()
 		dayCount := ts / 86400
@@ -36,35 +36,45 @@ func StartTakeInterestServer() {
 			time.Sleep(time.Duration(sleepTime) * time.Second)
 			continue
 		}
-		auth, err := gl.GetAccountAuth()
-		if err != nil {
-			gl.OutLogger.Error("Get auth error. %v", err)
-			continue
-		}
 
-		for _, contract := range config.Contract {
-			//get the pool's position
-			_, lp, _, sp, _, _, err := gl.GetPoolPosition(contract)
+		gl.OutLogger.Info("Start take interests. %v", time.Now())
+		//start taking interests
+		for i := range config.Contract {
+			takeInterest(uint(dayCount), config.Contract[i])
+		}
+		time.Sleep(time.Second * time.Duration(config.Interest.End-config.Interest.Begin))
+	}
+}
+
+func takeInterest(dayCount uint, conAdd string) {
+	//get the pool's position
+	_, lp, _, sp, _, _, err := gl.GetPoolPosition(conAdd)
+	if err != nil {
+		gl.OutLogger.Error("Get account's position data from blockchain error. %s : %v", conAdd, err)
+		time.Sleep(time.Second)
+		return
+	}
+	til := interestUserList[conAdd]
+	var l map[string]*interestUser
+	if lp > sp {
+		l = til.getShortUsers()
+	} else if lp < sp {
+		l = til.getLongUsers()
+	}
+
+	for k, v := range l {
+		if v.day < dayCount {
+			err := gl.GetGasPriceAndNonce(config.Interest.GasPriceMin, gl.InterestAuth, gl.InterestPA)
 			if err != nil {
-				gl.OutLogger.Error("Get account's position data from blockchain error. %s : %v", contract, err)
-				time.Sleep(time.Second)
+				gl.OutLogger.Error("Get auth error when take interest. %v", err)
 				continue
 			}
-			til := interestUserList[contract]
-			var l map[string]*interestUser
-			if lp > sp {
-				l = til.getShortUsers()
-			} else if lp < sp {
-				l = til.getLongUsers()
-			}
 
-			for k, v := range l {
-				if v.day < uint(dayCount) {
-					if _, err := gl.DetectSlide(auth, contract, k); err == nil {
-						gl.OutLogger.Info("send interest over. %s", k)
-						til.flag(k, uint(dayCount))
-					}
-				}
+			if tx, err := gl.DetectSlide(gl.InterestAuth, conAdd, k); err == nil {
+				gl.OutLogger.Info("send interest over. %s : %s", k, tx.Hash().Hex())
+				til.flag(k, dayCount)
+			} else {
+				gl.OutLogger.Error("send interest error. %s : %s : %v", conAdd, k, err)
 			}
 		}
 	}

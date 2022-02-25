@@ -1,9 +1,10 @@
 package gl
 
 import (
-	"hedgex-server/logger"
 	"log"
 	"os"
+
+	"github.com/triplefi/go-logger/logger"
 )
 
 type ErrorCode int

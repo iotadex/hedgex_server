@@ -5,8 +5,9 @@ import (
 	"hedgex-server/gl"
 	"hedgex-server/model"
 	"sync"
-	"sync/atomic"
 	"time"
+
+	"github.com/ethereum/go-ethereum/core/types"
 )
 
 var expUserList map[string]*ExplosiveList //current accounts waiting for be detected to explosive
@@ -20,56 +21,77 @@ func init() {
 }
 
 //StartExplosiveDetectServer, no blocking function
-func StartExplosiveDetectServer() {
+func StartExplosiveDetect() {
+	for _, contract := range config.Contract {
+		go runExplosiveDetect(contract, expUserList[contract])
+	}
+}
+
+type ExpTx struct {
+	tx      *types.Transaction
+	account string
+}
+
+func runExplosiveDetect(conAdd string, el *ExplosiveList) {
+	txes := make([]ExpTx, 0)
 	timer := time.NewTicker(config.Explosive.Tick * time.Second)
 	for range timer.C {
-		for _, contract := range config.Contract {
-			//get the current price of contract
-			price := atomic.LoadInt64(IndexPrices[contract])
-			if price == 0 {
-				gl.OutLogger.Warn("Get index price error. %s", contract)
+		pendingTx := make([]ExpTx, 0)
+		// check txes from chain
+		for i := range txes {
+			if receipt, err := gl.GetTransaction(txes[i].tx.Hash()); err != nil {
+				gl.OutLogger.Info("Get tx(%s) receipt error. %v", txes[i].tx.Hash().Hex(), err)
+				pendingTx = append(pendingTx, txes[i])
+			} else {
+				gl.OutLogger.Info("Explosive accept. %d : %s", receipt.Status, receipt.TxHash.Hex())
+			}
+		}
+		txes = pendingTx
+		if len(txes) > 0 {
+			continue
+		}
+
+		//get the current price of contract
+		price, err := gl.GetIndexPrice(conAdd)
+		if err != nil {
+			gl.OutLogger.Error("Get price from contract error. %s : %v", conAdd, err)
+			continue
+		}
+
+		// get the accounts which need to be explosived
+		expAccounts := make([]string, 0)
+		el.mu.Lock()
+		node := el.LHead.Next
+		for node != nil {
+			if node.ExPrice < price {
+				break
+			}
+			expAccounts = append(expAccounts, node.Account)
+			node = node.Next
+		}
+		node = el.SHead.Next
+		for node != nil {
+			if node.ExPrice > price {
+				break
+			}
+			expAccounts = append(expAccounts, node.Account)
+			node = node.Next
+		}
+		el.mu.Unlock()
+
+		for _, account := range expAccounts {
+			err = gl.GetGasPriceAndNonce(config.Explosive.GasPriceMin, gl.ExplosiveAuth, gl.ExplosivePA)
+			if err != nil {
+				gl.OutLogger.Error("Get auth error when explosive user. %v", err)
 				continue
 			}
-
-			//check long position users
-			for {
-				expUserList[contract].mu.Lock()
-				node := expUserList[contract].LHead.Next
-				expUserList[contract].mu.Unlock()
-				if (node == nil) || (node.ExPrice < price) {
-					break
-				}
-				auth, err := gl.GetAccountAuth()
-				if err != nil {
-					gl.OutLogger.Error("Get auth error  when explosive user. %v", err)
-					break
-				}
-				if _, err := gl.Explosive(auth, contract, node.Account); err != nil {
-					gl.OutLogger.Error("Explosive error. %s : %s : %v", contract, node.Account, err)
-					break
-				}
-				expUserList[contract].Delete(node.Account)
+			tx, err := gl.Explosive(gl.ExplosiveAuth, conAdd, account)
+			if err != nil {
+				gl.OutLogger.Error("Explosive error. %s : %s : %v", conAdd, account, err)
+				continue
 			}
-
-			//check short position users
-			for {
-				expUserList[contract].mu.Lock()
-				node := expUserList[contract].SHead.Next
-				expUserList[contract].mu.Unlock()
-				if (node == nil) || (node.ExPrice > price) {
-					break
-				}
-				auth, err := gl.GetAccountAuth()
-				if err != nil {
-					gl.OutLogger.Error("Get auth error  when explosive user. %v", err)
-					break
-				}
-				if _, err := gl.Explosive(auth, contract, node.Account); err != nil {
-					gl.OutLogger.Error("Explosive error. %s : %s : %v", contract, node.Account, err)
-					break
-				}
-				expUserList[contract].Delete(node.Account)
-			}
+			txes = append(txes, ExpTx{tx: tx, account: account})
+			time.Sleep(time.Millisecond * 200)
 		}
 	}
 }

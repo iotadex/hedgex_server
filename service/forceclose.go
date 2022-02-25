@@ -8,7 +8,6 @@ import (
 )
 
 func StartForceCloseService() {
-	time.Sleep(time.Second * config.IndexTick)
 	for i := range config.Contract {
 		state, err := gl.GetPoolState(config.Contract[i])
 		if err != nil {
@@ -19,9 +18,9 @@ func StartForceCloseService() {
 			continue
 		}
 
-		auth, err := gl.GetAccountAuth()
+		err = gl.GetGasPriceAndNonce(config.Interest.GasPriceMin, gl.InterestAuth, gl.InterestPA)
 		if err != nil {
-			gl.OutLogger.Error("Get auth error when explosive pool. %v", err)
+			gl.OutLogger.Error("Get auth error when force close user. %v", err)
 			continue
 		}
 
@@ -33,11 +32,11 @@ func StartForceCloseService() {
 		}
 		for i := range users {
 			if users[i].Lposition > 0 || users[i].Sposition > 0 {
-				if err = gl.ForceClose(auth, config.Contract[i], users[i].Account); err != nil {
+				if _, err = gl.ForceClose(gl.InterestAuth, config.Contract[i], users[i].Account); err != nil {
 					gl.OutLogger.Error("send forceCloseAccount to contract error. %s : %v", config.Contract[i], err)
 				}
 			}
 		}
-		time.Sleep(time.Second * config.IndexTick * 10)
+		time.Sleep(time.Second * 3600)
 	}
 }

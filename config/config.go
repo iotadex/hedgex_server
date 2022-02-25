@@ -20,37 +20,39 @@ type db struct {
 }
 
 type chainNode struct {
-	Https           string  `json:"http"`
-	Wss             string  `json:"ws"`
-	GasPriceUp      float64 `json:"gas_price_up"`
-	GasPriceMin     int64   `json:"gas_price_min"`
-	From            int64   `json:"from"`
-	BlockCountLimit int64   `json:"block_count_limit"`
+	Https           string `json:"http"`
+	Wss             string `json:"ws"`
+	From            int64  `json:"from"`
+	BlockCountLimit int64  `json:"block_count_limit"`
 }
 
 type explosive struct {
-	Tick      time.Duration `json:"tick"`
-	ToAddress string        `json:"to_address"`
-	Wallet    string        `json:"wallet"`
+	Start       bool          `json:"start"`
+	Tick        time.Duration `json:"tick"`
+	GasPriceUp  float64       `json:"gas_price_up"`
+	GasPriceMin int64         `json:"gas_price_min"`
+	ToAddress   string        `json:"to_address"`
+	Wallet      string        `json:"wallet"`
 }
 
 type interest struct {
-	Tick      time.Duration `json:"tick"`
-	Begin     int64         `json:"begin"`
-	End       int64         `json:"end"`
-	ToAddress string        `json:"to_address"`
-	Wallet    string        `json:"wallet"`
+	Start       bool          `json:"start"`
+	Tick        time.Duration `json:"tick"`
+	Begin       int64         `json:"begin"`
+	End         int64         `json:"end"`
+	GasPriceUp  float64       `json:"gas_price_up"`
+	GasPriceMin int64         `json:"gas_price_min"`
+	ToAddress   string        `json:"to_address"`
+	Wallet      string        `json:"wallet"`
 }
 
 var (
-	Env        string
-	Db         db
-	Explosive  explosive
-	Interest   interest
-	IndexTick  time.Duration
-	ChainNode  chainNode
-	Contract   []string
-	PrivateKey string
+	Env       string
+	Db        db
+	Explosive explosive
+	Interest  interest
+	ChainNode chainNode
+	Contract  []string
 )
 
 //Load load config file
@@ -61,14 +63,12 @@ func init() {
 	}
 	defer file.Close()
 	type Config struct {
-		Env        string        `json:"env"`
-		Explosive  explosive     `json:"explosive"`
-		Interest   interest      `json:"interest"`
-		IndexTick  time.Duration `json:"index_tick"`
-		Db         db            `json:"db"`
-		ChainNode  chainNode     `json:"chain_node"`
-		Contract   []string      `json:"contract"`
-		PrivateKey string        `json:"wallet"`
+		Env       string    `json:"env"`
+		Explosive explosive `json:"explosive"`
+		Interest  interest  `json:"interest"`
+		Db        db        `json:"db"`
+		ChainNode chainNode `json:"chain_node"`
+		Contract  []string  `json:"contract"`
 	}
 	all := &Config{}
 	if err = json.NewDecoder(file).Decode(all); err != nil {
@@ -76,12 +76,10 @@ func init() {
 	}
 	Env = all.Env
 	Db = all.Db
-	IndexTick = all.IndexTick
 	Explosive = all.Explosive
 	Interest = all.Interest
 	ChainNode = all.ChainNode
 	Contract = all.Contract
-	PrivateKey = all.PrivateKey
 	if Interest.Begin >= Interest.End {
 		log.Panic("interest.begin must < interest.end")
 	}

@@ -1,29 +1,25 @@
 package service
 
 import (
-	"container/list"
 	"hedgex-server/config"
 	"hedgex-server/model"
 	"log"
-	"sync"
-
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
-	"github.com/ethereum/go-ethereum/core/types"
 )
 
 func Start() {
-	//start index price service
-	go StartIndexPriceService()
-
 	//start listening the event of contracts
 	go StartFilterEvents()
 
 	//get users from database
 	getHistoryUsersDataFromDb()
 
-	//go StartExplosiveDetectServer()
+	if config.Explosive.Start {
+		go StartExplosiveDetect()
+	}
 
-	//go StartTakeInterestServer()
+	if config.Interest.Start {
+		go StartTakeInterest()
+	}
 }
 
 func getHistoryUsersDataFromDb() {
@@ -40,18 +36,4 @@ func getHistoryUsersDataFromDb() {
 			interestUserList[contract].update(&users[i])
 		}
 	}
-}
-
-type txNode struct {
-	tx   *types.Transaction
-	auth *bind.TransactOpts
-}
-
-type TxList struct {
-	txList list.List
-	mu     sync.Mutex
-}
-
-func StartDetectTransactions() {
-
 }

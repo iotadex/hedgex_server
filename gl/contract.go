@@ -41,18 +41,15 @@ var (
 	Contracts       map[string]*hedgex.Hedgex
 	KeepMarginScale map[string]uint64
 
-	//
-	privateKey    *ecdsa.PrivateKey
-	PublicAddress common.Address
+	ExplosiveAuth *bind.TransactOpts
+	ExplosivePA   common.Address
+	InterestAuth  *bind.TransactOpts
+	InterestPA    common.Address
 
-	erc20TransferID []byte
-	chainID         *big.Int
+	chainID *big.Int
 )
 
 func InitContract() {
-	key := tools.InputKey()
-	pk := tools.AesCBCDecrypt(config.PrivateKey, key)
-	SetPrivateKey(pk)
 
 	var err error
 	EthHttpsClient, err = ethclient.Dial(config.ChainNode.Https)
@@ -64,6 +61,12 @@ func InitContract() {
 	if err != nil {
 		log.Panic(err)
 	}
+
+	key := tools.InputKey()
+	pk := tools.AesCBCDecrypt(config.Explosive.Wallet, key)
+	ExplosiveAuth, ExplosivePA = getAccountAuth(pk)
+	pk = tools.AesCBCDecrypt(config.Interest.Wallet, key)
+	InterestAuth, InterestPA = getAccountAuth(pk)
 
 	KeepMarginScale = make(map[string]uint64)
 	Contracts = make(map[string]*hedgex.Hedgex)
@@ -108,13 +111,11 @@ func InitContract() {
 	EventNames[ExplosiveEvent] = "Explosive"
 	EventNames[TakeInterestEvent] = "TakeInterest"
 	EventNames[TransferEvent] = "Transfer"
-
-	erc20TransferID = []byte{0xa9, 0x05, 0x9c, 0xbb} //transfer(address,uint256)
 }
 
-func SetPrivateKey(pk string) {
+func getAccountAuth(pk string) (*bind.TransactOpts, common.Address) {
 	var err error
-	privateKey, err = crypto.HexToECDSA(pk)
+	privateKey, err := crypto.HexToECDSA(pk)
 	if err != nil {
 		log.Panic("Get privatekey error.", err)
 	}
@@ -123,139 +124,51 @@ func SetPrivateKey(pk string) {
 	if !ok {
 		log.Panic("error casting public key to ECDSA")
 	}
-	PublicAddress = crypto.PubkeyToAddress(*publicKeyECDSA)
-}
-
-func GetAccountAuth() (*bind.TransactOpts, error) {
-	gasPrice, err := EthHttpsClient.SuggestGasPrice(context.Background())
-	if err != nil {
-		return nil, err
-	}
-	if gasPrice.Int64() < config.ChainNode.GasPriceMin {
-		gasPrice = big.NewInt(config.ChainNode.GasPriceMin)
-	} else {
-		upPrice := int64(float64(gasPrice.Int64()) * (config.ChainNode.GasPriceUp + 1))
-		gasPrice = big.NewInt(upPrice)
-	}
+	publicAddress := crypto.PubkeyToAddress(*publicKeyECDSA)
 	auth, err := bind.NewKeyedTransactorWithChainID(privateKey, chainID)
 	if err != nil {
-		return nil, err
+		panic(err)
 	}
 	auth.Value = big.NewInt(0)
 	auth.GasLimit = uint64(300000)
+	return auth, publicAddress
+}
+
+func GetGasPriceAndNonce(minGasPrice int64, auth *bind.TransactOpts, pa common.Address) error {
+	gasPrice, err := EthHttpsClient.SuggestGasPrice(context.Background())
+	if err != nil {
+		return err
+	}
+	if gasPrice.Int64() < minGasPrice {
+		gasPrice = big.NewInt(minGasPrice)
+	}
 	auth.GasPrice = gasPrice
-	return auth, nil
-}
-
-func SendEth(to string, amountS string) error {
-	value, _ := new(big.Int).SetString(amountS, 10)
-	return sendTransaction(common.HexToAddress(to), value, nil)
-}
-
-func SendERC20(token string, to string, amountS string) error {
-	paddedAddress := common.LeftPadBytes(common.HexToAddress(to).Bytes(), 32) // 0x0000000000000000000000004592d8f8d7b001e72cb26a73e4fa1806a51ac79d
-	amount, _ := new(big.Int).SetString(amountS, 10)                          // amount
-	paddedAmount := common.LeftPadBytes(amount.Bytes(), 32)                   // 0x00000000000000000000000000000000000000000000003635c9adc5dea00000
-
-	var data []byte
-	data = append(data, erc20TransferID...)
-	data = append(data, paddedAddress...)
-	data = append(data, paddedAmount...)
-	value := big.NewInt(0) // in wei (0 eth)
-	return sendTransaction(common.HexToAddress(token), value, data)
-}
-
-func SendTransaction(to common.Address, value *big.Int, data []byte) error {
-	gasPrice, err := EthHttpsClient.SuggestGasPrice(context.Background())
+	nonce, err := EthHttpsClient.PendingNonceAt(context.Background(), pa)
 	if err != nil {
-		OutLogger.Error("get gas price error. %v", err)
 		return err
 	}
-	nonce, err := EthHttpsClient.PendingNonceAt(context.Background(), PublicAddress)
-	if err != nil {
-		OutLogger.Error("get nonce error address(%s). %v", PublicAddress, err)
-		return err
-	}
-	gasLimit := uint64(3000000)
-	tx := types.NewTransaction(nonce, to, value, gasLimit, gasPrice, data)
-	signedTx, err := types.SignTx(tx, types.NewEIP155Signer(chainID), privateKey)
-	if err != nil {
-		OutLogger.Error("create signedTx error. %v", err)
-		return err
-	}
-
-	err = EthHttpsClient.SendTransaction(context.Background(), signedTx)
-	if err != nil {
-		OutLogger.Error("send signedTx error. %v", err)
-		return err
-	}
+	auth.Nonce = big.NewInt(int64(nonce))
 	return nil
 }
 
-func sendTransaction(to common.Address, value *big.Int, data []byte) error {
-	gasPrice, err := EthHttpsClient.SuggestGasPrice(context.Background())
-	if err != nil {
-		OutLogger.Error("get gas price error. %v", err)
-		return err
-	}
-	nonce, err := EthHttpsClient.PendingNonceAt(context.Background(), PublicAddress)
-	if err != nil {
-		OutLogger.Error("get nonce error address(%s). %v", PublicAddress, err)
-		return err
-	}
-	gasLimit := uint64(3000000)
-	tx := types.NewTransaction(nonce, to, value, gasLimit, gasPrice, data)
-	signedTx, err := types.SignTx(tx, types.NewEIP155Signer(chainID), privateKey)
-	if err != nil {
-		OutLogger.Error("create signedTx error. %v", err)
-		return err
-	}
-
-	err = EthHttpsClient.SendTransaction(context.Background(), signedTx)
-	if err != nil {
-		OutLogger.Error("send signedTx error. %v", err)
-		return err
-	}
-	return nil
+func GetTransaction(txHash common.Hash) (*types.Receipt, error) {
+	return EthHttpsClient.TransactionReceipt(context.Background(), txHash)
 }
 
 func Explosive(auth *bind.TransactOpts, contract string, account string) (*types.Transaction, error) {
-	nonce, err := EthHttpsClient.PendingNonceAt(context.Background(), PublicAddress)
-	if err != nil {
-		return nil, err
-	}
-	auth.Nonce = big.NewInt(int64(nonce))
 	return Contracts[contract].Explosive(auth, common.HexToAddress(account), common.HexToAddress(config.Explosive.ToAddress))
 }
 
 func DetectSlide(auth *bind.TransactOpts, add string, account string) (*types.Transaction, error) {
-	nonce, err := EthHttpsClient.PendingNonceAt(context.Background(), PublicAddress)
-	if err != nil {
-		OutLogger.Error("Take interest : Get nonce error address(%s). %v", PublicAddress, err)
-		return nil, err
-	}
-	auth.Nonce = big.NewInt(int64(nonce))
 	return Contracts[add].DetectSlide(auth, common.HexToAddress(account), common.HexToAddress(config.Interest.ToAddress))
 }
 
-func ExplosivePool(auth *bind.TransactOpts, contract string) error {
-	nonce, err := EthHttpsClient.PendingNonceAt(context.Background(), PublicAddress)
-	if err != nil {
-		return err
-	}
-	auth.Nonce = big.NewInt(int64(nonce))
-	_, err = Contracts[contract].ExplosivePool(auth)
-	return err
+func ExplosivePool(auth *bind.TransactOpts, contract string) (*types.Transaction, error) {
+	return Contracts[contract].ExplosivePool(auth)
 }
 
-func ForceClose(auth *bind.TransactOpts, contract string, account string) error {
-	nonce, err := EthHttpsClient.PendingNonceAt(context.Background(), PublicAddress)
-	if err != nil {
-		return err
-	}
-	auth.Nonce = big.NewInt(int64(nonce))
-	_, err = Contracts[contract].ForceCloseAccount(auth, common.HexToAddress(account), common.HexToAddress(config.Explosive.ToAddress))
-	return err
+func ForceClose(auth *bind.TransactOpts, contract string, account string) (*types.Transaction, error) {
+	return Contracts[contract].ForceCloseAccount(auth, common.HexToAddress(account), common.HexToAddress(config.Explosive.ToAddress))
 }
 
 func GetIndexPrice(add string) (int64, error) {
@@ -282,5 +195,6 @@ func GetCurrentBlockNumber() (uint64, error) {
 	return EthHttpsClient.BlockNumber(context.Background())
 }
 
-func GetTransactionByHash() {
+func GetTransactionByHash(txHash common.Hash) {
+	EthHttpsClient.TransactionReceipt(context.Background(), txHash)
 }
