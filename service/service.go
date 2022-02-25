@@ -2,9 +2,26 @@ package service
 
 import (
 	"hedgex-server/config"
+	"hedgex-server/gl"
 	"hedgex-server/model"
 	"log"
 )
+
+func InitUsers() {
+	expUserList = make(map[string]*ExplosiveList)
+	for i := range config.Contract {
+		scale := gl.KeepMarginScale[config.Contract[i]]
+		expUserList[config.Contract[i]] = NewExplosiveList(scale)
+	}
+
+	interestUserList = make(map[string]*TakeInterestList)
+	for _, contract := range config.Contract {
+		interestUserList[contract] = &TakeInterestList{
+			luser: make(map[string]*interestUser),
+			suser: make(map[string]*interestUser),
+		}
+	}
+}
 
 func Start() {
 	//start listening the event of contracts

@@ -1,18 +1,14 @@
 package main
 
 import (
-	"fmt"
 	"hedgex-server/config"
 	"hedgex-server/daemon"
 	"hedgex-server/gl"
 	"hedgex-server/model"
 	"hedgex-server/service"
-	"time"
 )
 
 func main() {
-	fmt.Println(time.Now())
-	return
 	if config.Env == "product" {
 		daemon.Background("./out.log", true)
 	}
@@ -27,6 +23,7 @@ func main() {
 	gl.InitContract()
 
 	//start contract service
+	service.InitUsers()
 	service.Start()
 
 	//wait to exit single

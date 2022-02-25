@@ -58,10 +58,6 @@ func getHistoryEventLogs(addresses []common.Address) {
 	}
 
 	fromBlock := config.ChainNode.From
-	if fromBlock < 24892730 {
-		fromBlock = int64(currBlock) - config.ChainNode.BlockCountLimit + 10
-	}
-
 	for fromBlock < int64(currBlock) {
 		toBlcok := fromBlock + config.ChainNode.BlockCountLimit
 		query := ethereum.FilterQuery{

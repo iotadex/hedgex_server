@@ -10,16 +10,6 @@ import (
 
 var interestUserList map[string]*TakeInterestList
 
-func init() {
-	interestUserList = make(map[string]*TakeInterestList)
-	for _, contract := range config.Contract {
-		interestUserList[contract] = &TakeInterestList{
-			luser: make(map[string]*interestUser),
-			suser: make(map[string]*interestUser),
-		}
-	}
-}
-
 //StartExplosiveDetectServer, no blocking function
 func StartTakeInterest() {
 	for {

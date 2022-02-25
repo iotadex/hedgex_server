@@ -12,14 +12,6 @@ import (
 
 var expUserList map[string]*ExplosiveList //current accounts waiting for be detected to explosive
 
-func init() {
-	expUserList = make(map[string]*ExplosiveList)
-	for i := range config.Contract {
-		scale := gl.KeepMarginScale[config.Contract[i]]
-		expUserList[config.Contract[i]] = NewExplosiveList(scale)
-	}
-}
-
 //StartExplosiveDetectServer, no blocking function
 func StartExplosiveDetect() {
 	for _, contract := range config.Contract {
