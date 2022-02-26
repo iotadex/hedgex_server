@@ -23,6 +23,8 @@ func StartFilterEvents() {
 	}
 	getHistoryEventLogs(addresses)
 
+	go recheckHistoryEvent(addresses)
+
 	query := ethereum.FilterQuery{
 		Addresses: addresses,
 	}
@@ -53,7 +55,7 @@ StartFilter:
 func getHistoryEventLogs(addresses []common.Address) {
 	currBlock, err := gl.GetCurrentBlockNumber()
 	if err != nil {
-		log.Println("GetCurrentBlockNumber error. ", err)
+		log.Println("GetCurrentBlockNumber error.", err)
 		return
 	}
 
@@ -168,4 +170,43 @@ func updateUser(contract string, account string, block uint64) {
 	expUserList[contract].Update(&user)
 	//update the takeinterest list
 	interestUserList[contract].update(&user)
+}
+
+func recheckHistoryEvent(addresses []common.Address) {
+	fromBlock := config.ChainNode.From
+	timer := time.NewTicker(time.Hour)
+	for range timer.C {
+		currBlock, err := gl.GetCurrentBlockNumber()
+		if err != nil {
+			gl.OutLogger.Error("GetCurrentBlockNumber in recheck error. %v", err)
+			continue
+		}
+
+		//load block from mysql
+		if block, err := model.GetContract(); (err == nil) && (block > fromBlock) {
+			fromBlock = block
+		} else {
+			gl.OutLogger.Error("Get block from db error. %v", err)
+		}
+
+		for fromBlock < int64(currBlock) {
+			toBlcok := fromBlock + config.ChainNode.BlockCountLimit
+			query := ethereum.FilterQuery{
+				FromBlock: big.NewInt(fromBlock),
+				ToBlock:   big.NewInt(toBlcok),
+				Addresses: addresses,
+			}
+			logs, err := gl.EthHttpsClient.FilterLogs(context.Background(), query)
+			if err != nil {
+				log.Println("Get event logs from eth client error. ", err)
+				continue
+			}
+			for _, log := range logs {
+				dealEventLog(&log)
+			}
+			fromBlock += config.ChainNode.BlockCountLimit
+		}
+		fromBlock = int64(currBlock - 1)
+		log.Println("Update contract to db. ", fromBlock, model.UpdateContract(fromBlock))
+	}
 }
