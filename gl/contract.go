@@ -50,7 +50,6 @@ var (
 )
 
 func InitContract() {
-
 	var err error
 	EthHttpsClient, err = ethclient.Dial(config.ChainNode.Https)
 	if err != nil {
@@ -172,7 +171,7 @@ func ForceClose(auth *bind.TransactOpts, contract string, account string) (*type
 }
 
 func GetIndexPrice(add string) (int64, error) {
-	price, _, err := Contracts[add].GetLatestPrice(nil)
+	price, _, _, err := Contracts[add].GetLatestPrice(nil)
 	if err != nil {
 		return 0, err
 	}
