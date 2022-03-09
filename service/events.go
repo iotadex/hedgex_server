@@ -174,7 +174,7 @@ func updateUser(contract string, account string, block uint64) {
 
 func recheckHistoryEvent(addresses []common.Address) {
 	fromBlock := config.ChainNode.From
-	timer := time.NewTicker(time.Hour)
+	timer := time.NewTicker(time.Minute * 20)
 	for range timer.C {
 		currBlock, err := gl.GetCurrentBlockNumber()
 		if err != nil {

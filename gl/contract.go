@@ -64,8 +64,10 @@ func InitContract() {
 	key := tools.InputKey()
 	pk := tools.AesCBCDecrypt(config.Explosive.Wallet, key)
 	ExplosiveAuth, ExplosivePA = getAccountAuth(pk)
+	log.Println(ExplosivePA.Hex())
 	pk = tools.AesCBCDecrypt(config.Interest.Wallet, key)
 	InterestAuth, InterestPA = getAccountAuth(pk)
+	log.Println(InterestPA.Hex())
 
 	KeepMarginScale = make(map[string]uint64)
 	Contracts = make(map[string]*hedgex.Hedgex)
