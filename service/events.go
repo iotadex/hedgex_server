@@ -174,7 +174,7 @@ func updateUser(contract string, account string, block uint64) {
 
 func recheckHistoryEvent(addresses []common.Address) {
 	fromBlock := config.ChainNode.From
-	timer := time.NewTicker(time.Minute * 20)
+	timer := time.NewTicker(time.Second * config.ChainNode.Tick)
 	for range timer.C {
 		currBlock, err := gl.GetCurrentBlockNumber()
 		if err != nil {
@@ -183,10 +183,12 @@ func recheckHistoryEvent(addresses []common.Address) {
 		}
 
 		//load block from mysql
-		if block, err := model.GetContract(); (err == nil) && (block > fromBlock) {
-			fromBlock = block
+		if block, err := model.GetContract(config.ChainNode.Name); err == nil {
+			if block > fromBlock {
+				fromBlock = block
+			}
 		} else {
-			gl.OutLogger.Error("Get block from db error. %v", err)
+			gl.OutLogger.Error("Get block from db error. %d : %v", block, err)
 		}
 
 		for fromBlock < int64(currBlock) {
@@ -207,6 +209,6 @@ func recheckHistoryEvent(addresses []common.Address) {
 			fromBlock += config.ChainNode.BlockCountLimit
 		}
 		fromBlock = int64(currBlock - 1)
-		log.Println("Update contract to db. ", fromBlock, model.UpdateContract(fromBlock))
+		gl.OutLogger.Info("Update contract to db. %d : %v", fromBlock, model.UpdateContract(config.ChainNode.Name, fromBlock))
 	}
 }

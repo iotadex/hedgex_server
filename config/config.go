@@ -20,10 +20,12 @@ type db struct {
 }
 
 type chainNode struct {
-	Https           string `json:"http"`
-	Wss             string `json:"ws"`
-	From            int64  `json:"from"`
-	BlockCountLimit int64  `json:"block_count_limit"`
+	Https           string        `json:"http"`
+	Wss             string        `json:"ws"`
+	From            int64         `json:"from"`
+	Tick            time.Duration `json:"tick"`
+	BlockCountLimit int64         `json:"block_count_limit"`
+	Name            string        `json:"name"`
 }
 
 type explosive struct {
